@@ -1,13 +1,13 @@
 setwd("C:/Users/Neil/Documents/git-repos/notice_stock_portfolio")
-library(data.table)
 library(tidyverse)
 library(lubridate)
+library(data.table)
 
 #筆記 : 兩個市場都有KY股，X但DR存託憑證只有TSE有OTC沒有，錯，媽的都有
 #有上市轉上櫃，也有上櫃轉上市
 #TEJ 1325恆大打錯了啦
 #F-再生 跟再生KY是同一個東西，
-#目前小結，用證券代碼合併問題應該會問題小很多，
+#目前小結，用證券代碼合併問題應該會問題小很多。
 ##### 
 
 dic = c("第一款","第二款","第三款","第四款","第五款","第六款","第七款","第八款",
@@ -23,6 +23,7 @@ TSE_notice = TSE_notice %>% rename(c("證券代碼"="證券代號","公司名稱
 TSE_notice = TSE_notice %>% mutate(年 = substr(日期,1,3) %>% as.numeric + 1911 ) %>% 
                             mutate(年月日 = paste0(年,substr(日期,5,6),substr(日期,8,9))) %>%
                             select(-日期) 
+
 TSE_notice$年月日 = TSE_notice$年月日 %>% as.numeric
 
 #排除非上市公司
@@ -35,11 +36,10 @@ TSE_notice = TSE_notice %>% mutate(證券代碼 = 證券代碼 %>% as.numeric) %
 TSE_notice$本益比 = str_trim(TSE_notice$本益比 , side='both')
 TSE_notice$本益比 = gsub("-----","",TSE_notice$本益比) 
 TSE_notice$本益比 = TSE_notice$本益比 %>% as.numeric
-#TSE_notice = TSE_notice[is.na(本益比) == F,] #排除沒有本益比的公司(非普通股)
+#TSE_notice = TSE_notice[is.na(本益比) == F,] #排除沒有本益比的公司(非普通股) #不要使用，第六款會變NA
 
-#提取出被限制的條款
+#提取出被限制的條款，並且新增第十四款
 TSE_notice = TSE_notice %>% mutate( conditions =  NA )
-
 for (i in 1:13){ 
   TSE_notice = TSE_notice %>% mutate( 
     conditions = ifelse(grepl(dic[i] ,注意交易資訊) , paste(conditions,dic[i], sep = ",") ,conditions ) )
@@ -82,7 +82,6 @@ TSE_notice = TSE_notice %>% mutate( conditions = ifelse( grepl("6", conditions) 
 #排順序
 TSE_notice = TSE_notice[,c(2:3,10,9,8,6:7,4,11,5)]  #排個順序         
 
-
 #統計表
 stat.sheet=data.table()
 for (year in 2011:2022){
@@ -97,11 +96,11 @@ for (year in 2011:2022){
   tmp.sheet = data.table(年 = year , sheet)
   stat.sheet=rbind(stat.sheet , tmp.sheet)
 }
-
+rm(sheet,tmp.sheet)
 #儲存統計表格
-write.csv(stat.sheet , "./tidy_up_data/上市注意股出現次數表格.csv" , row.names = F )
+write.csv(stat.sheet , "./tidy_up_data/注意股結果/上市注意股出現次數表格.csv" , row.names = F )
 #儲存上市注意股
-write.csv(TSE_notice , "./tidy_up_data/上市注意股_20110101_20221018.csv" , row.names = F )
+write.csv(TSE_notice , "./tidy_up_data/注意股結果/上市注意股_20110101_20221018.csv" , row.names = F )
 
 #test
 #TSEtest = TSE_notice %>% filter(年 == 2013)
@@ -126,7 +125,6 @@ OTC_notice = OTC_notice %>% mutate(證券代碼 = 證券代碼 %>% as.numeric) %
 
 #修理一下本益比
 OTC_notice$本益比 = OTC_notice$本益比 %>% as.numeric
-
 
 #提取出被限制的條款
 OTC_notice = OTC_notice %>% mutate( conditions = NA )
@@ -168,8 +166,12 @@ OTC_notice = OTC_notice %>% mutate( conditions = ifelse( grepl("6", conditions) 
 
 OTC_notice = OTC_notice[,c(1,2,8,7,6,4,5,9,3)]  #排個順序         
 
+
+#####統計出現次數
+table(OTC_notice$conditions)
+
 #統計表
-otc.stat.sheet=data.table()
+otc.stat.sheet = data.table()
 for (year in 2011:2022){
   sheet = data.table()
   for (i in 1:14){
@@ -182,20 +184,20 @@ for (year in 2011:2022){
   tmp.sheet = data.table(年 = year , sheet)
   otc.stat.sheet=rbind(otc.stat.sheet , tmp.sheet)
 }
+rm(sheet,tmp.sheet)
 
 #儲存統計表格
-write.csv(otc.stat.sheet , "./tidy_up_data/上櫃注意股出現次數表格.csv" , row.names = F )
+write.csv(otc.stat.sheet , "./tidy_up_data/注意股結果/上櫃注意股出現次數表格.csv" , row.names = F )
 #儲存上市注意股
-write.csv(OTC_notice , "./tidy_up_data/上櫃注意股_20110101_20221018.csv" , row.names = F )
-
+write.csv(OTC_notice , "./tidy_up_data/注意股結果/上櫃注意股_20110101_20221018.csv" , row.names = F )
 
 ####載入上市處置股####
-TSE_dispose = fread("./orign_data/上市處置股_20110101_20221018.csv")
+TSE_dispose = fread("./orign_data/上市處置股_20110101_20221018.csv" )
 TSE_dispose = TSE_dispose[,c(2:9)]
 
 #調整年月日 因為只抓100年以後，所以可以直接這樣調整
 # 年月日 == 公告日
-TSE_dispose = TSE_dispose[grepl("1999", TSE_dispose$公布日期) == F] #資料西元年跟民國年放在一起有沒有搞錯啊
+TSE_dispose = TSE_dispose[grepl("1999", TSE_dispose$公布日期) == F] #資料西元年跟民國年放在一起有沒有搞錯啊，排除1999年的資料
 TSE_dispose = TSE_dispose %>% mutate(年 = substr(公布日期,1,3) %>% as.numeric + 1911) %>%
                               mutate(年月日 = paste0(年,substr(公布日期,5,6),substr(公布日期,8,9))  %>% as.numeric) %>%
                               select(-公布日期)
@@ -203,7 +205,8 @@ TSE_dispose = TSE_dispose %>% mutate(年 = substr(公布日期,1,3) %>% as.numer
 #移除非普通股
 TSE_dispose = TSE_dispose %>% rename(c("證券代碼"="證券代號","公司名稱"="證券名稱")) %>%
                               mutate(證券代碼 = 證券代碼 %>% as.numeric) %>% na.omit %>% 
-                              filter(substr(證券代碼,1,2) == "91" | 證券代碼 %between% c(1000,9999))
+                              filter(substr(證券代碼,1,2) == "91" | 證券代碼 %between% c(1000,9999)) %>% 
+                              arrange(證券代碼, desc(年月日) )
 
 ####還沒整理完表格，需要將處置期間根據~分成兩個表格在將他們轉換成西元日期，先這樣就好，
 ####然後跑注意股票的CAR持有報酬，在將有上漲跟下跌的條款，股票CAR分開
@@ -215,10 +218,39 @@ TSE_dispose = TSE_dispose %>% mutate(處置開始期間 = paste0((substr(處置�
                                      處置結束期間 = paste0((substr(處置結束期間,1,3) %>% as.numeric + 1911) 
                                                     ,substr(處置結束期間,5,6),substr(處置結束期間,8,9)) %>% as.numeric ) %>%
                               mutate( 處置實施天數 = ymd(處置結束期間) - ymd(處置開始期間) )
-  
+
+
+###篩選出暫停多少時間####分盤交易
+stoptime_func = function(dispose.sheet){
+  dic_time = c("五分鐘","十分鐘","四十五分鐘","二十分鐘","二十五分鐘","六十分鐘","九十分鐘","三十分鐘","兩百七十分鐘")
+  dic_time.num = c("5分鐘","10分鐘","45分鐘","20分鐘","25分鐘","60分鐘","90分鐘" ,"30分鐘" , "270分鐘") #30分鐘不知道是甚麼鬼 #270分鐘也是
+  for (i in c(dic_time,dic_time.num)){
+    if (i == dic_time[1]){ #目的，先生成一個變數
+      dispose.sheet = dispose.sheet %>% mutate( 分盤 =  ifelse(grepl( i ,  處置內容 ) , i , NA ) )
+    }else{
+      dispose.sheet = dispose.sheet %>% mutate( 分盤 =  ifelse(grepl( i ,  處置內容 ) , i , 分盤 ) )}}
+  for (n in 1:9){
+    dispose.sheet = dispose.sheet %>% mutate( 分盤 = ifelse( 分盤 == dic_time.num[n] , dic_time[n] , 分盤 ))  %>% 
+                                      filter(is.na(分盤) == F) #直接移除資料缺失，恢復交易(OTC_1筆)，僅OTC全額交割股(12筆)
+    }
+  dispose.sheet = dispose.sheet %>% mutate( 處置次數 = ifelse(grepl( "曾發布處置" ,  處置內容 ) , "第二次處置" , "第一次處置"  )  )
+  return(dispose.sheet)
+  }
+#的確是有可能30分盤跟20分盤，但是是第一次處置，通常是因為督導會報決議
+
+TSE_dispose = stoptime_func(TSE_dispose)
+
+TSE_dispose$市場別 = "TSE" 
+TSE_dispose = TSE_dispose[,c("證券代碼","公司名稱","市場別","年","年月日","處置開始期間","處置結束期間","處置次數","分盤","處置內容")]
+
+write.csv(TSE_dispose , "./tidy_up_data/處置股結果/上市處置股_20110101_20221018.csv" , row.names = F   )
+
+#table(TSE_dispose$分盤)
+#table(TSE_dispose$處置措施)
+
 #想要確認一下公告時間會不會是周6
-TSE_dispose$week.day = wday(ymd(TSE_dispose$年月日)) #取出星期，不應該有1(週六)跟7(週日)
-# 會有週六(多是二月要補上班上課)
+#TSE_dispose$week.day = wday(ymd(TSE_dispose$年月日)) #取出星期，不應該有1(週六)跟7(週日)
+#會有週六(多是二月要補上班上課)
 
 ####載入上櫃處置股####
 OTC_dispose = fread("./orign_data/上櫃處置股_20111001_20221019.csv")
@@ -231,6 +263,14 @@ OTC_dispose = OTC_dispose %>% mutate(年 = substr(公布日期,1,3) %>% as.numer
   mutate(年月日 = paste0(年,substr(公布日期,5,6),substr(公布日期,8,9))  %>% as.numeric) %>%
   select(-公布日期)
 
+OTC_dispose = OTC_dispose %>% rename(c("證券代碼"="證券代號","公司名稱"="證券名稱", "處置條件"="處置原因")) %>%
+                              mutate(證券代碼 = 證券代碼 %>% as.numeric) %>% na.omit %>% 
+                              filter(substr(證券代碼,1,2) == "91" | 證券代碼 %between% c(1000,9999)) %>% 
+                              arrange(證券代碼, desc(年月日) )
+
+
+
+
 OTC_dispose = separate(OTC_dispose, 處置起訖時間 , c("處置開始期間","處置結束期間"),"~")
 
 OTC_dispose = OTC_dispose %>% mutate(處置開始期間 = paste0((substr(處置開始期間,1,3) %>% as.numeric + 1911) 
@@ -239,19 +279,32 @@ OTC_dispose = OTC_dispose %>% mutate(處置開始期間 = paste0((substr(處置�
                                                      ,substr(處置結束期間,5,6),substr(處置結束期間,8,9)) %>% as.numeric ) %>%
                               mutate( 處置實施天數 = ymd(處置結束期間) - ymd(處置開始期間) )
 
+OTC_dispose = stoptime_func(OTC_dispose)
+
+OTC_dispose$市場別 = "OTC" 
+OTC_dispose = OTC_dispose[,c("證券代碼","公司名稱","市場別","年","年月日","處置開始期間","處置結束期間","處置次數","分盤","處置內容")]
+
+table(OTC_dispose$分盤)
+
+write.csv(OTC_dispose , "./tidy_up_data/處置股結果/上櫃處置股_20110101_20221018.csv" , row.names = F   )
+
 
 
 #####載入股價資料表、與TSE、OTC資料合併####
-TSE_notice = fread("./tidy_up_data/上市注意股_20110101_20221018.csv")
-OTC_notice = fread("./tidy_up_data/上櫃注意股_20110101_20221018.csv")
 
-#TSE_notice = TSE_notice %>% select(-累計次數)
+###注意股資料合併###
+TSE_notice = fread("./tidy_up_data/注意股結果/上市注意股_20110101_20221018.csv")
+OTC_notice = fread("./tidy_up_data/注意股結果/上櫃注意股_20110101_20221018.csv")
 all_notice = rbind(TSE_notice %>% select(-累計次數) , OTC_notice )
 
+###處置股資料合併###
+TSE_dispose = fread("./tidy_up_data/處置股結果/上市處置股_20110101_20221018.csv")
+OTC_dispose = fread("./tidy_up_data/處置股結果/上櫃處置股_20110101_20221018.csv")
+all_dispose = rbind( TSE_dispose , OTC_dispose ) %>% arrange(市場別,證券代碼,desc(年月日))
+
+###載入股價資料表###
 stock_price = fread("./orign_data/stock_price_20110101_20221019.csv" , header = T , sep = "," ,
                     colClasses = list(character = c(1,35:38) , numeric=2:34) )
-
-
 gc()
 stock_price = separate(stock_price, 證券代碼 , c("證券代碼","公司名稱")," " , extra = "merge" ) %>%  #水啦要加extra = "merge"
               mutate(證券代碼 = 證券代碼 %>% as.numeric)
@@ -264,15 +317,98 @@ stock_price = stock_price %>% rename(c("TSE產業別" = "TSE 產業別" , "調�
                                       "週轉率" = "週轉率％" )
                                       )
 
-
-#                         
-# stock_price$`注意股票(A)` = gsub(".","", stock_price$`注意股票(A)` ) 
-
+#合併注意股與股價資料
 stock_price = merge(stock_price , all_notice %>% select(-公司名稱) , by = c("證券代碼","年月日","市場別" ) , all = T)
-#stock_price_test = merge(stock_price , all_notice %>% select(-公司名稱) , by = c("證券代碼","年月日","市場別" ) , all = T)
+
+#合併處置股與股價資料
+stock_price = merge(stock_price , all_dispose %>% select(-公司名稱,-年)  , by = c("證券代碼","年月日","市場別") , all = T)
+
+
+#新增分類指標，分成四大項目，漲跌，成家+漲跌，成交，其他
+stock_price$條款分類 = NA
+for (i in c(1:14) ) {
+  if(i %in% c(1,2,5,7,11) ){ #漲跌
+    stock_price = stock_price %>%　mutate( 條款分類 = ifelse(grepl( dic[i] ,  conditions ) , paste0(條款分類,"漲跌組",sep = "," ) , 條款分類 ))}  
+  if(i %in% c(3,4)){ #成交+漲跌
+    stock_price = stock_price %>%　mutate( 條款分類 = ifelse(grepl( dic[i] ,  conditions ) , paste0(條款分類,"成交量漲跌組",sep = "," ) , 條款分類 ))}
+  if(i %in% c(9,10)){ #成交
+    stock_price = stock_price %>%　mutate( 條款分類 = ifelse(grepl( dic[i] ,  conditions ) , paste0(條款分類,"成交量組",sep = "," ) , 條款分類 ))}
+  if(i %in% c(6,8,12,13,14)){ #其他
+    stock_price = stock_price %>%　mutate( 條款分類 = ifelse(grepl( dic[i] ,  conditions ) , paste0(條款分類,"其他",sep = "," ) , 條款分類 ))}
+}
+stock_price$條款分類 = gsub("NA","", stock_price$條款分類) #土法煉鋼把第一排NA刪除
+
+#分類開始C4取1234 很白癡的做法，應該可以用choose 
+stock_price = stock_price %>%　mutate(條款分類 = ifelse( grepl("漲跌組",條款分類) & !grepl("成交量漲跌組",條款分類) & #A
+                                                      !grepl("成交量組",條款分類) & !grepl("其他",條款分類) , "漲跌組" , 條款分類 ),
+                                     
+                                      條款分類 = ifelse( grepl("漲跌組",條款分類) & grepl("成交量漲跌組",條款分類) & #AB
+                                                      !grepl("成交量組",條款分類) & !grepl("其他",條款分類) , "漲跌組_成交量漲跌組" , 條款分類 ),
+                                     
+                                     條款分類 = ifelse( grepl("漲跌組",條款分類) & grepl("成交量漲跌組",條款分類) & #ABC
+                                                       grepl("成交量組",條款分類) & !grepl("其他",條款分類) , "漲跌組_成交量漲跌組_成交量組" , 條款分類 ),
+                                     
+                                     條款分類 = ifelse( grepl("漲跌組",條款分類) & grepl("成交量漲跌組",條款分類) & #ABCD
+                                                       grepl("成交量組",條款分類) & grepl("其他",條款分類) , "漲跌組_成交量漲跌組_成交量組_其他" , 條款分類 ),
+                                      
+                                     條款分類 = ifelse( !grepl("漲跌組",條款分類) & grepl("成交量漲跌組",條款分類) & #B
+                                                       !grepl("成交量組",條款分類) & !grepl("其他",條款分類) , "成交量漲跌組" , 條款分類 ),
+                                     
+                                     條款分類 = ifelse( !grepl("漲跌組",條款分類) & !grepl("成交量漲跌組",條款分類) & #C
+                                                       grepl("成交量組",條款分類) & !grepl("其他",條款分類) , "成交量組" , 條款分類 ),
+                                      
+                                     條款分類 = ifelse( !grepl("漲跌組",條款分類) & !grepl("成交量漲跌組",條款分類) & #D
+                                                      !grepl("成交量組",條款分類) & grepl("其他",條款分類) , "其他" , 條款分類 ),
+                                    
+                                     條款分類 = ifelse( grepl("漲跌組",條款分類) & !grepl("成交量漲跌組",條款分類) & #AC
+                                                      grepl("成交量組",條款分類) & !grepl("其他",條款分類) , "漲跌組_成交量組" , 條款分類 ),
+                                     
+                                     條款分類 = ifelse( grepl("漲跌組",條款分類) & !grepl("成交量漲跌組",條款分類) & #AD
+                                                      !grepl("成交量組",條款分類) & grepl("其他",條款分類) , "漲跌組_其他" , 條款分類 ),
+                                     
+                                     條款分類 = ifelse( !grepl("漲跌組",條款分類) & grepl("成交量漲跌組",條款分類) & #BC
+                                                       grepl("成交量組",條款分類) & !grepl("其他",條款分類) , "成交量漲跌組_成交量組" , 條款分類 ),
+                                     
+                                     條款分類 = ifelse( grepl("漲跌組",條款分類) & !grepl("成交量漲跌組",條款分類) & #BD
+                                                      !grepl("成交量組",條款分類) & grepl("其他",條款分類) , "成交量漲跌組_其他" , 條款分類 ),
+                                     
+                                     條款分類 = ifelse( !grepl("漲跌組",條款分類) & !grepl("成交量漲跌組",條款分類) & #CD
+                                                        grepl("成交量組",條款分類) & grepl("其他",條款分類) , "成交量組_其他" , 條款分類 ),
+                                     
+                                     條款分類 = ifelse( grepl("漲跌組",條款分類) & grepl("成交量漲跌組",條款分類) & #ABD
+                                                       !grepl("成交量組",條款分類) & grepl("其他",條款分類) , "漲跌組_成交量漲跌組_其他" , 條款分類 ),
+                                     
+                                     條款分類 = ifelse( grepl("漲跌組",條款分類) & !grepl("成交量漲跌組",條款分類) & #ACD
+                                                       grepl("成交量組",條款分類) & grepl("其他",條款分類) , "漲跌組_成交量組_其他" , 條款分類 ),
+                                     
+                                     條款分類 = ifelse( !grepl("漲跌組",條款分類) & grepl("成交量漲跌組",條款分類) & # BCD
+                                                       grepl("成交量組",條款分類) & grepl("其他",條款分類) , "成交量漲跌組_成交量組_其他" , 條款分類 )
+                                     
+                                                                          )
+#上面是白癡分組寫法
+stock_price = stock_price %>% mutate( 條款分類 = ifelse( grepl("成交量組_其他",條款分類), "成交量組" , 條款分類 ),
+                                      條款分類 = ifelse( grepl("漲跌組_成交量組",條款分類), "成交量漲跌組" , 條款分類 ),
+                                      條款分類 = ifelse( grepl("漲跌組_成交量組_其他",條款分類), "成交量漲跌組" , 條款分類 ),
+                                      條款分類 = ifelse( grepl("漲跌組_成交量漲跌組",條款分類), "成交量漲跌組" , 條款分類 ),
+                                      條款分類 = ifelse( grepl("漲跌組_成交量漲跌組_其他",條款分類), "成交量漲跌組" , 條款分類 )
+                                      ) %>% 
+                              mutate( 條款分類 = factor( 條款分類 , order = T , levels = c("漲跌組","成交量組","成交量漲跌組","其他") ) ) #在這邊加入factor排序
+             
+
+
+table(stock_price$條款分類)
+tmp = stock_price %>% filter(is.na(conditions) ==T , is.na(條款分類) == F)
+tmp = stock_price %>% filter(is.na(conditions) ==F , is.na(條款分類) == T)
+
+
+
+
+
 
 #儲存股價資料表合併注意股
 write.csv(stock_price , "./tidy_up_data/合併後股價資料表_20110101_20221018.csv" , row.names = F)
+
+gc()
 
 
 #等下要做的事就是先把stock_price的欄位先整理一下並且算出進一日報酬跟進六日報酬，以便判斷他是第一款漲還是第一款跌
@@ -310,6 +446,19 @@ cc = stock_price_test[,c(1:7,37:39,43:44)] %>%  filter( stock_price_test$`注意
 # 這個問題比較小，以櫃買中心為準即可
 # 
 # 證交所3筆，櫃買中心85筆資料資之缺失值不理他。總比數共41998筆，忽略其中88筆移除缺失值。
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
