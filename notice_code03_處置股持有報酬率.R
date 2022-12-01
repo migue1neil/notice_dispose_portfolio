@@ -16,13 +16,14 @@ library(zoo)
 dic = c("第一款","第二款","第三款","第四款","第五款","第六款","第七款","第八款",
         "第九款","第十款","第十一款","第十二款","第十三款","第十四款" )
 
-dic_dispose = c("第一次處置","第二次處置")
+com_dic = c("漲跌組","成交量組","成交量漲跌組","其他")
 
+dic_dispose = c("第一次處置","第二次處置")
 
 stock_price = fread("./tidy_up_data/合併後股價資料表_20110101_20221018.csv" , header = T , sep = "," ,
                     colClasses = list(character = c(3,4,37:39,43:44) , numeric= c(1,2,5:36,40:42) ))
 
-stock_price = stock_price[,c(1:5,8:13,15,24,26,37:49)]
+stock_price = stock_price[,c(1:5,8:13,15,24,26,37:49,50)]
 
 test_list = stock_price %>% filter( is.na(處置次數)== F)　%>%　select(證券代碼) %>% unique  #只選出有處置的證券代碼
 stock_price = stock_price[證券代碼 %in% test_list[[1]],]
@@ -255,10 +256,6 @@ xx2d = stock_price %>% filter(處置次數 == "第二次處置" , 六日漲跌 =
 table(xx2d$分盤)
 table(xx2d$分盤分組)
 
-
-
-
-
 stock_price = stock_price %>% mutate(
    分組分盤_1 = ifelse( 分盤 %chin% c("五分鐘","十分鐘","四十五分鐘"),分盤, "其他"  ),
    分組分盤_2 = ifelse( 分盤 %chin% c("二十分鐘","二十五分鐘","六十分鐘"),分盤, "其他"  )
@@ -365,3 +362,105 @@ handled.dispose = function(stock_price , market ){
 ccd = handled.dispose( stock_price , market = "TSE")
 cce = handled.dispose( stock_price , market = "OTC")
 # rm(cc)
+
+##### 根據處置次數+條款分組分組+漲跌分組
+
+stock_price = stock_price %>% mutate(處分條款 =  paste(條款分類 , lag(條款分類) , lag(條款分類 , n = 2), sep = "," ),
+                                     最近期處分 = paste(條款分類) ) %>%
+                              mutate( 最近期處分 = ifelse(is.na(處置次數)== F & 最近期處分 == "NA" , "監視業務督導會報決議" , 最近期處分  )   )
+#先處理最近期處分
+stock_price = stock_price 
+
+table(stock_price%>%filter(is.na(處置次數)==F ) %>% select(最近期處分)  )
+
+tmp = stock_price%>%filter(is.na(處置次數)==F ,處置次數 == "第二次處置" , 處分條款 == "漲跌組,NA,漲跌組" ) 
+
+table(stock_price$最近期處分)
+
+length(is.na(stock_price$條款分類) == F)
+
+tmp = stock_price %>% filter(處分條款 == "NA,漲跌組,NA" ,is.na(處置次數)==F )
+
+tmp = stock_price %>% filter(最近期處分 == "成交量組" , is.na(處置次數)==F) #業務督導會報決議的股票大約有70筆
+
+
+####我現在要算一個每天日報酬風險的表格#####
+#計算每組的平均報酬，風險指標，如何跑顯著性???
+com_dispose_daily_func = function(stock_price){  
+  dic_dispose = c("第一次處置","第二次處置")
+  com_dic = c("成交量組","成交量漲跌組","其他","漲跌組","監視業務督導會報決議")
+  vol.list = c("NA","+","-")
+  big_sheet = data.table()
+  # market = "OTC"
+  for(dic in dic_dispose){
+    com.sheet = data.table()
+    for(cdic in com_dic){
+      vol.sheet = data.table()
+      for(vol in vol.list){
+        if(vol == "NA"){
+          tmp = stock_price %>%　filter( grepl( dic , 處置次數) , grepl( cdic , 最近期處分 )  )
+        }
+        if(vol != "NA"){
+          tmp = stock_price %>%　filter( grepl( dic , 處置次數) & 六日漲跌 == vol , grepl( cdic , 最近期處分 ) )
+        }
+        sheet = data.table()
+        for(i in 32:52){ #算風險指標 第0日報酬~第10日報酬
+          a.vector = tmp[[i]] 
+          if(length(a.vector) == 0){cc = data.table(disposed = dic,
+                                                    conditions = cdic,
+                                                    index = colnames(tmp[,i]) , 
+                                                    #market = market,
+                                                    vol = vol,
+                                                    mean = NA  , sd =NA  , max = NA ,
+                                                   quantile_75 =NA, median = NA ,quantile_25=NA, min = NA , 
+                                                    win.rate = NA,sample = length(a.vector), p.value = NA )
+          }
+          
+          if(length(a.vector) != 0){
+          cc = data.table(disposed = dic,
+                          conditions = cdic,
+                          index = colnames(tmp[,i]) , 
+                          #market = market,
+                          vol = vol,
+                          mean = mean(a.vector , na.rm=T ) %>% round(4) , 
+                          sd = sd(a.vector , na.rm=T) %>% round(4) ,
+                          max = max(a.vector , na.rm=T ) %>% round(4) ,
+                          quantile_75 = quantile(a.vector , probs = 0.75 , na.rm=T ) %>% round(4),
+                          median = quantile(a.vector , probs = 0.5 , na.rm=T ) %>% round(4),
+                          quantile_25 = quantile(a.vector , probs = 0.25 , na.rm=T ) %>% round(4), 
+                          min = min(a.vector , na.rm=T ) %>% round(4) ,
+                          win.rate =  (length( (which(a.vector >= 0))) / length(a.vector)) %>% round(2),
+                          sample = length(a.vector),
+                          p.value = t.test(a.vector)[[3]] %>% round(4)
+          )
+          }
+          cc = cc %>% mutate(
+            p.value.mark = ifelse( p.value < 0.1 , "*" , ""  ) ,
+            p.value.mark = ifelse( p.value < 0.05 , "**" , p.value.mark  ),
+            p.value.mark = ifelse( p.value < 0.01 , "***" , p.value.mark  )
+          )
+          
+          sheet = rbind(sheet , cc )
+        }
+        vol.sheet = rbind( vol.sheet , sheet)
+      }
+      com.sheet = rbind(com.sheet,vol.sheet)
+    }
+    big_sheet = rbind( big_sheet , com.sheet)
+  }
+  #big_sheet = big_sheet %>% t()
+  #colnames(big_sheet) = dic_dispose
+  #big_sheet = big_sheet %>% round(4)
+  return(big_sheet)
+}
+
+com.dispose = com_dispose_daily_func(stock_price)
+
+AR.com.dispose = com.dispose %>% filter( !grepl( "持有" , index))
+
+CAR.com.dispose = com.dispose %>% filter( grepl( "持有" , index))
+
+
+
+
+

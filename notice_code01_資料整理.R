@@ -3,6 +3,8 @@ library(tidyverse)
 library(lubridate)
 library(data.table)
 
+##### 本code在處理 注意股資料/處置股資料/出現次數統計表
+
 #筆記 : 兩個市場都有KY股，X但DR存託憑證只有TSE有OTC沒有，錯，媽的都有
 #有上市轉上櫃，也有上櫃轉上市
 #TEJ 1325恆大打錯了啦
@@ -12,6 +14,10 @@ library(data.table)
 
 dic = c("第一款","第二款","第三款","第四款","第五款","第六款","第七款","第八款",
         "第九款","第十款","第十一款","第十二款","第十三款","第十四款" )
+
+dic_group = c("漲跌組","成交量組","成交量漲跌組","其他")
+
+dic_dispose = c("第一次處置","第二次處置")
 
 #####載入上市注意股#####
 TSE_notice = fread("./orign_data/上市注意股_20110101_20221018.csv" , encoding = "UTF-8")
@@ -82,8 +88,8 @@ TSE_notice = TSE_notice %>% mutate( conditions = ifelse( grepl("6", conditions) 
 #排順序
 TSE_notice = TSE_notice[,c(2:3,10,9,8,6:7,4,11,5)]  #排個順序         
 
-#統計表
-stat.sheet=data.table()
+##### TSE敘述統計表 #####
+TSE.stat.sheet=data.table()
 for (year in 2011:2022){
   sheet = data.table()
   for (i in 1:14){
@@ -94,11 +100,11 @@ for (year in 2011:2022){
     sheet = cbind(sheet,tmp.sheet)
   }
   tmp.sheet = data.table(年 = year , sheet)
-  stat.sheet=rbind(stat.sheet , tmp.sheet)
+  TSE.stat.sheet=rbind(TSE.stat.sheet , tmp.sheet)
 }
 rm(sheet,tmp.sheet)
 #儲存統計表格
-write.csv(stat.sheet , "./tidy_up_data/注意股結果/上市注意股出現次數表格.csv" , row.names = F )
+write.csv(TSE.stat.sheet , "./tidy_up_data/注意股結果/上市注意股出現次數表格.csv" , row.names = F )
 #儲存上市注意股
 write.csv(TSE_notice , "./tidy_up_data/注意股結果/上市注意股_20110101_20221018.csv" , row.names = F )
 
@@ -170,7 +176,7 @@ OTC_notice = OTC_notice[,c(1,2,8,7,6,4,5,9,3)]  #排個順序
 #####統計出現次數
 table(OTC_notice$conditions)
 
-#統計表
+###### OTC次數統計表 #####
 otc.stat.sheet = data.table()
 for (year in 2011:2022){
   sheet = data.table()
@@ -188,6 +194,12 @@ rm(sheet,tmp.sheet)
 
 #儲存統計表格
 write.csv(otc.stat.sheet , "./tidy_up_data/注意股結果/上櫃注意股出現次數表格.csv" , row.names = F )
+
+##### 上市加上櫃統計表格 #####
+all.stat.sheet = TSE.stat.sheet + otc.stat.sheet
+all.stat.sheet$年 = all.stat.sheet$年/2
+write.csv(otc.stat.sheet , "./tidy_up_data/注意股結果/全市場注意股出現次數表格.csv" , row.names = F )
+
 #儲存上市注意股
 write.csv(OTC_notice , "./tidy_up_data/注意股結果/上櫃注意股_20110101_20221018.csv" , row.names = F )
 
@@ -303,7 +315,7 @@ OTC_dispose = fread("./tidy_up_data/處置股結果/上櫃處置股_20110101_202
 all_dispose = rbind( TSE_dispose , OTC_dispose ) %>% arrange(市場別,證券代碼,desc(年月日))
 
 ###載入股價資料表###
-stock_price = fread("./orign_data/stock_price_20110101_20221019.csv" , header = T , sep = "," ,
+stock_price = fread("./orign_data/stock_price_2010101_20221201.txt" , header = T , sep = "\t" ,
                     colClasses = list(character = c(1,35:38) , numeric=2:34) )
 gc()
 stock_price = separate(stock_price, 證券代碼 , c("證券代碼","公司名稱")," " , extra = "merge" ) %>%  #水啦要加extra = "merge"
@@ -323,7 +335,7 @@ stock_price = merge(stock_price , all_notice %>% select(-公司名稱) , by = c(
 #合併處置股與股價資料
 stock_price = merge(stock_price , all_dispose %>% select(-公司名稱,-年)  , by = c("證券代碼","年月日","市場別") , all = T)
 
-
+##### 條款分組 #####
 #新增分類指標，分成四大項目，漲跌，成家+漲跌，成交，其他
 stock_price$條款分類 = NA
 for (i in c(1:14) ) {
@@ -400,14 +412,6 @@ table(stock_price$條款分類)
 tmp = stock_price %>% filter(is.na(conditions) ==T , is.na(條款分類) == F)
 tmp = stock_price %>% filter(is.na(conditions) ==F , is.na(條款分類) == T)
 
-
-
-
-
-
-#儲存股價資料表合併注意股
-write.csv(stock_price , "./tidy_up_data/合併後股價資料表_20110101_20221018.csv" , row.names = F)
-
 gc()
 
 
@@ -449,10 +453,57 @@ cc = stock_price_test[,c(1:7,37:39,43:44)] %>%  filter( stock_price_test$`注意
 
 
 
+##### 漲跌分組與報酬率計算 #####
+#####我需要求出每個條款的平均報酬率，t1~t20，先不看漲跌的
+stock_price = stock_price %>% group_by(證券代碼) %>%
+  mutate( 漲跌分組 = ifelse((調整收盤價 -lag(調整收盤價 ,5)) / lag(調整收盤價 , 5) >= 0 , "上漲" , "下跌" )) %>% ungroup
+#漲跌分組，近六日漲跌，用做判斷條款漲跌用途
 
+##### for 第二款使用 30日漲跌 60日漲跌 90日漲跌
+stock_price = stock_price %>% group_by(證券代碼) %>%
+  mutate( 當天收盤減開盤 = ifelse((調整收盤價 - 調整開盤價) > 0 ,"上漲" , "下跌" ),
+          當天跟前30天報酬 = ifelse(((調整收盤價 - lag(調整收盤價,29)) / lag(調整收盤價,29)) > 0 , "上漲" , "下跌"),
+          當天跟前60天報酬 = ifelse(((調整收盤價 - lag(調整收盤價,59)) / lag(調整收盤價,59)) > 0 , "上漲" , "下跌"),
+          當天跟前90天報酬 = ifelse(((調整收盤價 - lag(調整收盤價,89)) / lag(調整收盤價,89)) > 0 , "上漲" , "下跌")
+          #三十日最高 = rollmax(x = 調整收盤價 , k = 10 , align = "right" , fill = NA),
+          #三十日最低 = rollmax(x = -調整收盤價 , k = 10 , align = "right" , fill = NA) %>% abs ,
+  )
 
+#第二款漲跌判斷 ，要把上面的縮減到一個欄位
+stock_price = stock_price %>% group_by(證券代碼) %>%
+  mutate(  第二款漲跌 = ifelse( grepl("第二款", conditions) & grepl("三十", 注意交易資訊) & 當天跟前30天報酬 == "上漲","上漲","下跌"),
+           第二款漲跌 = ifelse( grepl("第二款", conditions) & grepl("六十", 注意交易資訊) & 當天跟前60天報酬 == "上漲", "上漲" , 第二款漲跌 ) ,
+           第二款漲跌 = ifelse( grepl("第二款", conditions) & grepl("九十", 注意交易資訊) & 當天跟前90天報酬 == "上漲", "上漲" , 第二款漲跌 )
+  )
 
+#stock_price %>% filter(is.na(調整收盤價) == T )
 
+#####向量方式算出每個時間點的日報酬#####
+for (ndays in 0:10){
+  if (ndays == 0){ stock_price = stock_price %>% group_by(證券代碼) %>% 
+    mutate( 第0日報酬 = (調整收盤價-調整開盤價)/調整開盤價) } %>% ungroup #持有0日是偷看
+  if(ndays != 0){
+    stock_price = stock_price %>% group_by(證券代碼) %>% 
+      mutate( holding_ndays = ( lead(調整收盤價, n = ndays) - lead(調整開盤價, n = ndays) )/lead(調整開盤價, n = ndays)) %>% ungroup
+    colnames(stock_price)[NCOL(stock_price)]  = paste0("第",ndays,"日報酬")
+  }
+}
+
+##### 算出提前持有1天報酬走勢 #####
+for (ndays in 1:10){
+  if (ndays == 0){ stock_price = stock_price %>% group_by(證券代碼) %>% 
+    mutate( 持有0日報酬 = (調整收盤價-調整開盤價)/調整開盤價) } %>% ungroup #持有0日是偷看
+  if(ndays != 0){
+    stock_price = stock_price %>% group_by(證券代碼) %>% 
+      mutate( holding_ndays = ( lead(調整收盤價, n = ndays) - lead(調整開盤價, n = 1)  )/lead(調整開盤價, n = 1)) %>% ungroup
+    colnames(stock_price)[NCOL(stock_price)]  = paste0("持有",ndays,"日報酬")
+  }
+}
+
+#儲存股價資料表合併注意股
+write.csv(stock_price , "./tidy_up_data/合併後股價資料表_20100101_20221231.csv" , row.names = F)
+
+# 第六款分類有點詭異，可以看一下是不是可以細分
 
 
 
